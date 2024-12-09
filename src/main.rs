@@ -1,9 +1,11 @@
+use bevy::color::palettes::css::SKY_BLUE;
+use bevy::prelude::*;
 use bevy::render::camera::*;
-use bevy::{input::common_conditions::input_just_pressed, prelude::*};
-const WINDOW_WIDTH: f32 = 512.0;
-const WINDOW_HEIGHT: f32 = 600.0;
+const WINDOW_WIDTH: f32 = 800.0;
+const WINDOW_HEIGHT: f32 = 800.0;
 
 const GRAVITY_MAX: f32 = 10.0;
+
 fn main() {
     App::new()
         .add_plugins(
@@ -18,11 +20,26 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_systems(Startup, spawn_player)
         .add_systems(Startup, setup)
-        .add_systems(Update, handle_player_jump)
-        .add_systems(Update, apply_gravity)
+        .add_plugins(EnvironmentSetupPlugin)
+        .add_plugins(PlayerPlugin)
         .run();
+}
+
+pub struct PlayerPlugin;
+impl Plugin for PlayerPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, spawn_player);
+        app.add_systems(Update, handle_player_jump);
+        app.add_systems(Update, apply_gravity);
+    }
+}
+
+pub struct EnvironmentSetupPlugin;
+impl Plugin for EnvironmentSetupPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, set_environment);
+    }
 }
 
 #[derive(Component)]
@@ -55,34 +72,41 @@ impl Default for PlayerPhysicsBundle {
         PlayerPhysicsBundle {
             velocity: Velocity(Vec2 { x: 0.0, y: 0.0 }),
             gravity: Gravity::default(),
-            jump_velocity: JumpVelocity(80.0),
+            jump_velocity: JumpVelocity(150.0),
         }
     }
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
+    //setup camera
     let proj = Projection::Orthographic(OrthographicProjection {
         scaling_mode: ScalingMode::WindowSize,
-        scale: 0.3,
+        //scale: 0.3,
         ..OrthographicProjection::default_2d()
     });
 
+    clear_color.0 = SKY_BLUE.into();
     commands.spawn((Camera2d, proj));
 }
 
 fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let sprite = asset_server.load("default_rustacean.png");
     commands.spawn((
         Rustacean,
-        Sprite::from_image(asset_server.load("default_rustacean.png")),
+        Sprite {
+            image: sprite,
+            custom_size: Some(Vec2 { x: 100.0, y: 100.0 }),
+            ..default()
+        },
         PlayerPhysicsBundle::default(),
     ));
 }
 
 fn handle_player_jump(
     keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Velocity, &JumpVelocity, &Rustacean)>,
+    mut query: Query<(&mut Velocity, &JumpVelocity), With<Rustacean>>,
 ) {
-    for (mut velocity, jump_velocity, _rustacean) in &mut query {
+    for (mut velocity, jump_velocity) in &mut query {
         if keys.just_pressed(KeyCode::Space) {
             velocity.0.y = jump_velocity.0;
         }
@@ -90,10 +114,10 @@ fn handle_player_jump(
 }
 
 fn apply_gravity(
-    mut query: Query<(&mut Transform, &mut Velocity, &mut Gravity, &Rustacean)>,
+    mut query: Query<(&mut Transform, &mut Velocity, &mut Gravity), With<Rustacean>>,
     time: Res<Time>,
 ) {
-    for (mut transform, mut velocity, mut gravity, _rustacean) in &mut query {
+    for (mut transform, mut velocity, mut gravity) in &mut query {
         if gravity.0 > GRAVITY_MAX {
             gravity.0 = GRAVITY_MAX;
         }
@@ -106,11 +130,30 @@ fn apply_gravity(
 struct FloorTile;
 
 fn set_environment(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let num_sand_tiles = WINDOW_WIDTH as i32;
+    let sprite_size = 100.0;
+    let num_sand_tiles = WINDOW_WIDTH as i32 / sprite_size as i32;
+    let sand_tile_asset = asset_server.load("sand_floor_tile.png");
+    let sprite = Sprite {
+        image: sand_tile_asset,
+        custom_size: Some(Vec2 {
+            x: sprite_size,
+            y: sprite_size,
+        }),
+        ..default()
+    };
+
     for i in 0..num_sand_tiles {
         commands.spawn((
-            Sprite::from_image(asset_server.load("sand_floor_tile.png")),
+            sprite.clone(),
             FloorTile,
+            Transform {
+                translation: Vec3 {
+                    x: (-WINDOW_WIDTH / 2.0) + i as f32 * sprite_size + sprite_size / 2.0,
+                    y: (-WINDOW_HEIGHT / 2.0) + sprite_size / 2.0,
+                    z: 0.0,
+                },
+                ..default()
+            },
         ));
     }
 }
