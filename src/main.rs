@@ -1,7 +1,8 @@
+use bevy::render::camera::*;
 use bevy::{input::common_conditions::input_just_pressed, prelude::*};
-
 const WINDOW_WIDTH: f32 = 512.0;
 const WINDOW_HEIGHT: f32 = 600.0;
+
 const GRAVITY_MAX: f32 = 10.0;
 fn main() {
     App::new()
@@ -32,7 +33,7 @@ struct Gravity(f32);
 
 impl Default for Gravity {
     fn default() -> Gravity {
-        Gravity(-1.0)
+        Gravity(-2.0)
     }
 }
 
@@ -43,15 +44,15 @@ struct Velocity(Vec2);
 struct JumpVelocity(f32);
 
 #[derive(Bundle)]
-struct PlayerPhysics {
+struct PlayerPhysicsBundle {
     velocity: Velocity,
     gravity: Gravity,
     jump_velocity: JumpVelocity,
 }
 
-impl Default for PlayerPhysics {
-    fn default() -> PlayerPhysics {
-        PlayerPhysics {
+impl Default for PlayerPhysicsBundle {
+    fn default() -> PlayerPhysicsBundle {
+        PlayerPhysicsBundle {
             velocity: Velocity(Vec2 { x: 0.0, y: 0.0 }),
             gravity: Gravity::default(),
             jump_velocity: JumpVelocity(80.0),
@@ -60,14 +61,20 @@ impl Default for PlayerPhysics {
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    let proj = Projection::Orthographic(OrthographicProjection {
+        scaling_mode: ScalingMode::WindowSize,
+        scale: 0.3,
+        ..OrthographicProjection::default_2d()
+    });
+
+    commands.spawn((Camera2d, proj));
 }
 
 fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         Rustacean,
         Sprite::from_image(asset_server.load("default_rustacean.png")),
-        PlayerPhysics::default(),
+        PlayerPhysicsBundle::default(),
     ));
 }
 
