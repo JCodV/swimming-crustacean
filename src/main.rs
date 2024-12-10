@@ -9,6 +9,7 @@ const GRAVITY_MAX: f32 = 10.0;
 const SPRITE_SIZE: f32 = 100.0;
 const SAND_TOP_OF_FLOOR_Y: f32 = (-WINDOW_HEIGHT / 2.0) + SPRITE_SIZE;
 const SAND_BOT_OF_FLOOR_Y: f32 = -WINDOW_HEIGHT / 2.0;
+
 fn main() {
     App::new()
         .add_plugins(
@@ -31,12 +32,16 @@ fn main() {
         .run();
 }
 
+#[derive(Resource)]
+struct PlayerScore(i32);
+
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_player);
         app.add_systems(Update, handle_player_jump);
         app.add_systems(Update, apply_gravity);
+        app.add_systems(Update, update_player_score);
     }
 }
 
@@ -99,6 +104,7 @@ fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
 
     clear_color.0 = SKY_BLUE.into();
     commands.spawn((Camera2d, proj));
+    commands.insert_resource(PlayerScore(0));
 }
 
 fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -182,6 +188,12 @@ fn spawn_obstacle_timer(mut commands: Commands) {
 #[derive(Component)]
 struct Obstacle;
 
+#[derive(Component)]
+struct ScorePillar {
+    x: f32,
+    passed: bool,
+}
+
 fn spawn_obstacles(
     mut commands: Commands,
     mut obs_timer: ResMut<ObstacleSpawnTimer>,
@@ -218,18 +230,27 @@ fn spawn_obstacles(
             },
             Transform {
                 translation: Vec3 {
+                    x: WINDOW_WIDTH + 500.0,
                     y: SAND_TOP_OF_FLOOR_Y + (SPRITE_SIZE * height as f32) / 2.0,
                     ..default()
                 },
                 ..default()
             },
+            ScorePillar {
+                x: WINDOW_WIDTH + 500.0,
+                passed: false,
+            },
         ));
     }
 }
 
-fn move_obstacles(time: Res<Time>, mut query: Query<&mut Transform, With<Obstacle>>) {
-    for mut transform in &mut query {
+fn move_obstacles(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &mut ScorePillar), With<Obstacle>>,
+) {
+    for (mut transform, mut pillar) in &mut query {
         transform.translation.x -= 200.0 * time.delta_secs();
+        pillar.x -= 200.0 * time.delta_secs();
     }
 }
 
@@ -244,12 +265,28 @@ fn handle_player_obstacle_collision(
     let p_ymax = p.translation.y + SPRITE_SIZE / 2.0;
     for (o, sprite) in &obs_query {
         let sizes = sprite.custom_size.unwrap();
-        let o_xmin = o.translation.x - sizes[0];
-        let o_xmax = o.translation.x + sizes[0];
+        let o_xmin = o.translation.x - sizes[0] + 20.0;
+        let o_xmax = o.translation.x + sizes[0] - 20.0;
         let o_ymin = o.translation.y - sizes[1];
-        let o_ymax = o.translation.y + sizes[1];
-        if (p_xmin <= o_xmax && p_xmax >= o_xmin && p_ymin <= o_ymax && p_ymax >= o_ymin) {
-            println!("Collision detected!");
+        let o_ymax = o.translation.y + sizes[1] - 200.0;
+        if p_xmin <= o_xmax && p_xmax >= o_xmin && p_ymin <= o_ymax && p_ymax >= o_ymin {
+            //println!("Collision detected!");
         }
     }
+}
+
+fn update_player_score(
+    mut score: ResMut<PlayerScore>,
+    player_query: Query<&Transform, With<Rustacean>>,
+    mut pillar: Query<&mut ScorePillar>,
+) {
+    let p = &player_query.single();
+
+    for mut pil in &mut pillar {
+        if p.translation.x >= pil.x && pil.passed == false {
+            score.0 += 1;
+            pil.passed = true;
+        }
+    }
+    println!("{}", score.0);
 }
