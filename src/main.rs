@@ -26,7 +26,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_plugins(EnvironmentPlugin)
         .add_plugins(PlayerPlugin)
-        .add_plugins(ObstacleSpawnerPlugin)
+        .add_plugins(ObstaclePlugin)
         .run();
 }
 
@@ -46,11 +46,11 @@ impl Plugin for EnvironmentPlugin {
     }
 }
 
-pub struct ObstacleSpawnerPlugin;
-impl Plugin for ObstacleSpawnerPlugin {
+pub struct ObstaclePlugin;
+impl Plugin for ObstaclePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_obstacle_timer);
-        app.add_systems(Update, spawn_obstacles);
+        app.add_systems(Update, (spawn_obstacles, move_obstacles));
     }
 }
 
@@ -90,7 +90,6 @@ impl Default for PlayerPhysicsBundle {
 }
 
 fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
-    //setup camera
     let proj = Projection::Orthographic(OrthographicProjection {
         scaling_mode: ScalingMode::WindowSize,
         //scale: 0.3,
@@ -179,6 +178,8 @@ fn spawn_obstacle_timer(mut commands: Commands) {
     let timer = Timer::from_seconds(2.0, TimerMode::Repeating);
     commands.insert_resource(ObstacleSpawnTimer(timer));
 }
+#[derive(Component)]
+struct Obstacle;
 
 fn spawn_obstacles(
     mut commands: Commands,
@@ -194,6 +195,7 @@ fn spawn_obstacles(
     let coral_sprite = asset_server.load("pink_coral.png");
     let sea_weed_sprite = asset_server.load("seaweed.png");
 
+    obs_timer.0.tick(time.delta());
     if obs_timer.0.finished() {
         let num: i32 = rng.gen_range(1..3);
         let sprite = if num == 1 {
@@ -204,6 +206,7 @@ fn spawn_obstacles(
             sea_weed_sprite.clone()
         };
         commands.spawn((
+            Obstacle,
             Sprite {
                 image: sprite,
                 custom_size: Some(Vec2 {
@@ -220,7 +223,11 @@ fn spawn_obstacles(
                 ..default()
             },
         ));
-    } else {
-        obs_timer.0.tick(time.delta());
+    }
+}
+
+fn move_obstacles(time: Res<Time>, mut query: Query<&mut Transform, With<Obstacle>>) {
+    for mut transform in &mut query {
+        transform.translation.x -= 200.0 * time.delta_secs();
     }
 }
