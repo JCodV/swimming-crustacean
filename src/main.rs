@@ -27,6 +27,7 @@ fn main() {
         .add_plugins(EnvironmentPlugin)
         .add_plugins(PlayerPlugin)
         .add_plugins(ObstaclePlugin)
+        .add_systems(Update, handle_player_obstacle_collision)
         .run();
 }
 
@@ -229,5 +230,26 @@ fn spawn_obstacles(
 fn move_obstacles(time: Res<Time>, mut query: Query<&mut Transform, With<Obstacle>>) {
     for mut transform in &mut query {
         transform.translation.x -= 200.0 * time.delta_secs();
+    }
+}
+
+fn handle_player_obstacle_collision(
+    player_query: Query<&Transform, With<Rustacean>>,
+    obs_query: Query<(&Transform, &Sprite), With<Obstacle>>,
+) {
+    let p = &player_query.single();
+    let p_xmin = p.translation.x - SPRITE_SIZE / 2.0;
+    let p_xmax = p.translation.x + SPRITE_SIZE / 2.0;
+    let p_ymin = p.translation.y - SPRITE_SIZE / 2.0;
+    let p_ymax = p.translation.y + SPRITE_SIZE / 2.0;
+    for (o, sprite) in &obs_query {
+        let sizes = sprite.custom_size.unwrap();
+        let o_xmin = o.translation.x - sizes[0];
+        let o_xmax = o.translation.x + sizes[0];
+        let o_ymin = o.translation.y - sizes[1];
+        let o_ymax = o.translation.y + sizes[1];
+        if (p_xmin <= o_xmax && p_xmax >= o_xmin && p_ymin <= o_ymax && p_ymax >= o_ymin) {
+            println!("Collision detected!");
+        }
     }
 }
