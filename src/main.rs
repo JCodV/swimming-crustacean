@@ -7,7 +7,8 @@ const WINDOW_HEIGHT: f32 = 800.0;
 
 const GRAVITY_MAX: f32 = 10.0;
 const SPRITE_SIZE: f32 = 100.0;
-
+const SAND_TOP_OF_FLOOR_Y: f32 = (-WINDOW_HEIGHT / 2.0) + SPRITE_SIZE;
+const SAND_BOT_OF_FLOOR_Y: f32 = -WINDOW_HEIGHT / 2.0;
 fn main() {
     App::new()
         .add_plugins(
@@ -162,8 +163,8 @@ fn set_environment(mut commands: Commands, asset_server: Res<AssetServer>) {
             Transform {
                 translation: Vec3 {
                     x: (-WINDOW_WIDTH / 2.0) + i as f32 * SPRITE_SIZE + SPRITE_SIZE / 2.0,
-                    y: (-WINDOW_HEIGHT / 2.0) + SPRITE_SIZE / 2.0,
-                    z: 0.0,
+                    y: (SAND_TOP_OF_FLOOR_Y + SAND_BOT_OF_FLOOR_Y) / 2.0,
+                    ..default()
                 },
                 ..default()
             },
@@ -185,53 +186,40 @@ fn spawn_obstacles(
     time: Res<Time>,
     asset_server: Res<AssetServer>,
 ) {
-    println!("obs timer time elapsed: {:?}", obs_timer.0);
     let mut rng = rand::thread_rng();
     let coral_height = 2;
     let sea_weed_height = 3;
-    let mut height;
-    let h_tiles = WINDOW_WIDTH as i32 / SPRITE_SIZE as i32;
+    let height;
 
-    let coral_sprite = asset_server.load("coral.png");
-    let sea_weed_sprite = asset_server.load("sea_weed.png");
+    let coral_sprite = asset_server.load("pink_coral.png");
+    let sea_weed_sprite = asset_server.load("seaweed.png");
 
     if obs_timer.0.finished() {
-        // spawn top
-        let mut num: i32 = rng.gen_range(1..3);
-        let top_sprite = if num == 1 {
+        let num: i32 = rng.gen_range(1..3);
+        let sprite = if num == 1 {
             height = coral_height;
             coral_sprite.clone()
         } else {
             height = sea_weed_height;
             sea_weed_sprite.clone()
         };
-        commands.spawn(Sprite {
-            image: top_sprite,
-            flip_x: true,
-            custom_size: Some(Vec2 {
-                x: SPRITE_SIZE,
-                y: height as f32,
-            }),
-            ..default()
-        });
-        // spawn bottom
-        num = rng.gen_range(1..3);
-        let bottom_sprite = if num == 1 {
-            height = coral_height;
-            coral_sprite.clone()
-        } else {
-            height = sea_weed_height;
-            sea_weed_sprite.clone()
-        };
-        commands.spawn(Sprite {
-            image: bottom_sprite,
-            flip_x: false,
-            custom_size: Some(Vec2 {
-                x: SPRITE_SIZE,
-                y: height as f32,
-            }),
-            ..default()
-        });
+        commands.spawn((
+            Sprite {
+                image: sprite,
+                custom_size: Some(Vec2 {
+                    x: SPRITE_SIZE,
+                    y: SPRITE_SIZE * height as f32,
+                }),
+                ..default()
+            },
+            Transform {
+                translation: Vec3 {
+                    y: SAND_TOP_OF_FLOOR_Y + (SPRITE_SIZE * height as f32) / 2.0,
+                    ..default()
+                },
+                ..default()
+            },
+        ));
     } else {
         obs_timer.0.tick(time.delta());
     }
