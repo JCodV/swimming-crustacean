@@ -10,6 +10,7 @@ const SPRITE_SIZE: f32 = 100.0;
 const SAND_TOP_OF_FLOOR_Y: f32 = (-WINDOW_HEIGHT / 2.0) + SPRITE_SIZE;
 const SAND_BOT_OF_FLOOR_Y: f32 = -WINDOW_HEIGHT / 2.0;
 
+const GENERAL_SPAWN_POINT_X: f32 = WINDOW_WIDTH + 500.0;
 fn main() {
     App::new()
         .add_plugins(
@@ -55,7 +56,7 @@ impl Plugin for EnvironmentPlugin {
 pub struct ObstaclePlugin;
 impl Plugin for ObstaclePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_obstacle_timer);
+        app.add_systems(Startup, setup_timers);
         app.add_systems(Update, (spawn_obstacles, move_obstacles));
     }
 }
@@ -181,9 +182,17 @@ fn set_environment(mut commands: Commands, asset_server: Res<AssetServer>) {
 #[derive(Resource)]
 struct ObstacleSpawnTimer(Timer);
 
-fn spawn_obstacle_timer(mut commands: Commands) {
-    let timer = Timer::from_seconds(2.0, TimerMode::Repeating);
-    commands.insert_resource(ObstacleSpawnTimer(timer));
+fn setup_timers(mut commands: Commands) {
+    let obs_wait_time = 2.0;
+    let shark_wait_time = 2.0;
+    commands.insert_resource(ObstacleSpawnTimer(Timer::from_seconds(
+        obs_wait_time,
+        TimerMode::Repeating,
+    )));
+    commands.insert_resource(SharkSpawnTimer(Timer::from_seconds(
+        shark_wait_time,
+        TimerMode::Repeating,
+    )));
 }
 #[derive(Component)]
 struct Obstacle;
@@ -230,7 +239,7 @@ fn spawn_obstacles(
             },
             Transform {
                 translation: Vec3 {
-                    x: WINDOW_WIDTH + 500.0,
+                    x: GENERAL_SPAWN_POINT_X,
                     y: SAND_TOP_OF_FLOOR_Y + (SPRITE_SIZE * height as f32) / 2.0,
                     ..default()
                 },
@@ -289,4 +298,51 @@ fn update_player_score(
         }
     }
     println!("{}", score.0);
+}
+
+#[derive(Component)]
+struct Shark;
+
+#[derive(Resource)]
+struct SharkSpawnTimer(Timer);
+
+fn spawn_sharks(
+    mut commands: Commands,
+    mut timer: ResMut<SharkSpawnTimer>,
+    time: Res<Time>,
+    asset_server: Res<AssetServer>,
+) {
+    let rng = rand::thread_rng();
+    let upper_shark_y = WINDOW_HEIGHT / 2.0;
+    let lower_shark_y = -(WINDOW_HEIGHT / 2.0) + SAND_BOT_OF_FLOOR_Y;
+    let random_shark_y_pos: f32 = 0.0;
+    let shark_sprite = asset_server.load("shark.png");
+    // ******************************
+    // add the random pick of y level
+    timer.0.tick(time.delta());
+    if timer.0.finished() {
+        commands.spawn((
+            Shark,
+            Sprite {
+                image: shark_sprite,
+                custom_size: Some(Vec2 {
+                    x: SPRITE_SIZE * 4.0,
+                    y: SPRITE_SIZE * 2.0,
+                }),
+                ..default()
+            },
+            Transform {
+                translation: Vec3 {
+                    x: GENERAL_SPAWN_POINT_X,
+                    y: random_shark_y_pos,
+                    ..default()
+                },
+                ..default()
+            },
+        ));
+    }
+}
+
+fn move_sharks() {
+    todo!();
 }
