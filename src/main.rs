@@ -1,36 +1,74 @@
-use bevy::color::palettes::css::SKY_BLUE;
+use bevy::color::palettes::css::CADET_BLUE;
 use bevy::prelude::*;
 use bevy::render::camera::*;
 use rand::prelude::*;
 const WINDOW_WIDTH: f32 = 800.0;
 const WINDOW_HEIGHT: f32 = 800.0;
+const BG_COLOR: bevy::prelude::Srgba = CADET_BLUE;
 
 const GRAVITY_MAX: f32 = 10.0;
 const SPRITE_SIZE: f32 = 100.0;
 const SAND_TOP_OF_FLOOR_Y: f32 = (-WINDOW_HEIGHT / 2.0) + SPRITE_SIZE;
 const SAND_BOT_OF_FLOOR_Y: f32 = -WINDOW_HEIGHT / 2.0;
 
-const GENERAL_SPAWN_POINT_X: f32 = WINDOW_WIDTH + 500.0;
-fn main() {
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(ImagePlugin::default_nearest())
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Swimming Rustacean".into(),
-                        resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
-                        ..default()
-                    }),
-                    ..default()
-                }),
-        )
-        .add_systems(Startup, setup)
-        .add_plugins(EnvironmentPlugin)
-        .add_plugins(PlayerPlugin)
-        .add_plugins(ObstaclePlugin)
-        .add_systems(Update, handle_player_obstacle_collision)
-        .run();
+const GENERAL_SPAWN_POINT_X: f32 = WINDOW_WIDTH + 200.0;
+
+const SHARK_SPEED: f32 = 350.0;
+const OBSTACLE_SPEED: f32 = 200.0;
+#[derive(Resource)]
+struct ObstacleSpawnTimer(Timer);
+
+#[derive(Component)]
+struct Obstacle;
+
+#[derive(Component)]
+struct ScorePillar {
+    x: f32,
+    passed: bool,
+}
+
+#[derive(Component)]
+struct Shark;
+
+#[derive(Resource)]
+struct SharkSpawnTimer(Timer);
+
+#[derive(Component)]
+struct FloorTile;
+
+#[derive(Component)]
+struct Rustacean;
+
+#[derive(Component)]
+struct Gravity(f32);
+
+impl Default for Gravity {
+    fn default() -> Gravity {
+        Gravity(-4.0)
+    }
+}
+
+#[derive(Component)]
+struct Velocity(Vec2);
+
+#[derive(Component)]
+struct JumpVelocity(f32);
+
+#[derive(Bundle)]
+struct PlayerPhysicsBundle {
+    velocity: Velocity,
+    gravity: Gravity,
+    jump_velocity: JumpVelocity,
+}
+
+impl Default for PlayerPhysicsBundle {
+    fn default() -> PlayerPhysicsBundle {
+        PlayerPhysicsBundle {
+            velocity: Velocity(Vec2 { x: 0.0, y: 0.0 }),
+            gravity: Gravity::default(),
+            jump_velocity: JumpVelocity(250.0),
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -58,42 +96,30 @@ impl Plugin for ObstaclePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_timers);
         app.add_systems(Update, (spawn_obstacles, move_obstacles));
+        app.add_systems(Update, (spawn_sharks, move_sharks));
     }
 }
 
-#[derive(Component)]
-struct Rustacean;
-
-#[derive(Component)]
-struct Gravity(f32);
-
-impl Default for Gravity {
-    fn default() -> Gravity {
-        Gravity(-2.0)
-    }
-}
-
-#[derive(Component)]
-struct Velocity(Vec2);
-
-#[derive(Component)]
-struct JumpVelocity(f32);
-
-#[derive(Bundle)]
-struct PlayerPhysicsBundle {
-    velocity: Velocity,
-    gravity: Gravity,
-    jump_velocity: JumpVelocity,
-}
-
-impl Default for PlayerPhysicsBundle {
-    fn default() -> PlayerPhysicsBundle {
-        PlayerPhysicsBundle {
-            velocity: Velocity(Vec2 { x: 0.0, y: 0.0 }),
-            gravity: Gravity::default(),
-            jump_velocity: JumpVelocity(150.0),
-        }
-    }
+fn main() {
+    App::new()
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Swimming Rustacean".into(),
+                        resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
+        .add_systems(Startup, setup)
+        .add_plugins(EnvironmentPlugin)
+        .add_plugins(PlayerPlugin)
+        .add_plugins(ObstaclePlugin)
+        .add_systems(Update, handle_player_obstacle_collision)
+        .run();
 }
 
 fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
@@ -103,7 +129,7 @@ fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
         ..OrthographicProjection::default_2d()
     });
 
-    clear_color.0 = SKY_BLUE.into();
+    clear_color.0 = BG_COLOR.into();
     commands.spawn((Camera2d, proj));
     commands.insert_resource(PlayerScore(0));
 }
@@ -118,6 +144,13 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 x: SPRITE_SIZE,
                 y: SPRITE_SIZE,
             }),
+            ..default()
+        },
+        Transform {
+            translation: Vec3 {
+                x: -(WINDOW_WIDTH / 2.0) + 200.0,
+                ..default()
+            },
             ..default()
         },
         PlayerPhysicsBundle::default(),
@@ -147,10 +180,6 @@ fn apply_gravity(
         transform.translation.y += velocity.0.y * time.delta_secs();
     }
 }
-
-#[derive(Component)]
-struct FloorTile;
-
 fn set_environment(mut commands: Commands, asset_server: Res<AssetServer>) {
     let num_sand_tiles = WINDOW_WIDTH as i32 / SPRITE_SIZE as i32;
     let sand_tile_asset = asset_server.load("sand_floor_tile.png");
@@ -179,12 +208,9 @@ fn set_environment(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 }
 
-#[derive(Resource)]
-struct ObstacleSpawnTimer(Timer);
-
 fn setup_timers(mut commands: Commands) {
-    let obs_wait_time = 2.0;
-    let shark_wait_time = 2.0;
+    let obs_wait_time = 1.0;
+    let shark_wait_time = 3.0;
     commands.insert_resource(ObstacleSpawnTimer(Timer::from_seconds(
         obs_wait_time,
         TimerMode::Repeating,
@@ -194,15 +220,6 @@ fn setup_timers(mut commands: Commands) {
         TimerMode::Repeating,
     )));
 }
-#[derive(Component)]
-struct Obstacle;
-
-#[derive(Component)]
-struct ScorePillar {
-    x: f32,
-    passed: bool,
-}
-
 fn spawn_obstacles(
     mut commands: Commands,
     mut obs_timer: ResMut<ObstacleSpawnTimer>,
@@ -258,8 +275,8 @@ fn move_obstacles(
     mut query: Query<(&mut Transform, &mut ScorePillar), With<Obstacle>>,
 ) {
     for (mut transform, mut pillar) in &mut query {
-        transform.translation.x -= 200.0 * time.delta_secs();
-        pillar.x -= 200.0 * time.delta_secs();
+        transform.translation.x -= OBSTACLE_SPEED * time.delta_secs();
+        pillar.x -= OBSTACLE_SPEED * time.delta_secs();
     }
 }
 
@@ -299,28 +316,20 @@ fn update_player_score(
     }
     println!("{}", score.0);
 }
-
-#[derive(Component)]
-struct Shark;
-
-#[derive(Resource)]
-struct SharkSpawnTimer(Timer);
-
 fn spawn_sharks(
     mut commands: Commands,
     mut timer: ResMut<SharkSpawnTimer>,
     time: Res<Time>,
     asset_server: Res<AssetServer>,
 ) {
-    let rng = rand::thread_rng();
+    let mut rng = rand::thread_rng();
     let upper_shark_y = WINDOW_HEIGHT / 2.0;
-    let lower_shark_y = -(WINDOW_HEIGHT / 2.0) + SAND_BOT_OF_FLOOR_Y;
-    let random_shark_y_pos: f32 = 0.0;
+    let lower_shark_y = 0.0;
     let shark_sprite = asset_server.load("shark.png");
-    // ******************************
-    // add the random pick of y level
+
     timer.0.tick(time.delta());
     if timer.0.finished() {
+        let random_shark_y_pos: f32 = rng.gen_range(lower_shark_y..upper_shark_y);
         commands.spawn((
             Shark,
             Sprite {
@@ -343,6 +352,8 @@ fn spawn_sharks(
     }
 }
 
-fn move_sharks() {
-    todo!();
+fn move_sharks(mut query: Query<&mut Transform, With<Shark>>, time: Res<Time>) {
+    for mut transform in &mut query {
+        transform.translation.x -= SHARK_SPEED * time.delta_secs();
+    }
 }
